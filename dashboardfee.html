@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduPay Pro | Fee Management & Slips</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; overflow-x: hidden; background: #0f172a; color: #f8fafc; }
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+        .glass-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .glass-card:hover { background: rgba(255, 255, 255, 0.08); transform: translateY(-5px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+        input, select { background: rgba(30, 41, 59, 0.8) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: #ffffff !important; appearance: none; }
+        select option { background-color: #1e293b; color: #ffffff; padding: 10px; }
+        input:focus, select:focus { outline: none; border-color: #6366f1 !important; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3); }
+        .btn-primary { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4); transition: all 0.2s; }
+        .btn-primary:hover { filter: brightness(1.1); transform: scale(1.02); }
+        .btn-outline { border: 1px solid rgba(99, 102, 241, 0.5); background: rgba(99, 102, 241, 0.1); transition: all 0.2s; }
+        .btn-outline:hover { background: rgba(99, 102, 241, 0.2); }
+        .status-badge { padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+        .status-paid { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .status-pending { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+        .status-partial { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="canvas-container"></div>
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400 mb-2">EduPay Pro</h1>
+                <p class="text-slate-400">Professional Fee Management & Receipts</p>
+            </div>
+            <div id="currentTime" class="text-slate-500 font-mono text-sm mt-4 md:mt-0"></div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="space-y-6">
+                <!-- Search Card -->
+                <div class="glass glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Search Student
+                    </h3>
+                    <div class="space-y-3">
+                        <input id="searchRoll" type="text" placeholder="Roll Number" class="w-full p-3 rounded-xl">
+                        <input id="searchName" type="text" placeholder="Student Name" class="w-full p-3 rounded-xl">
+                        <select id="searchClass" class="w-full p-3 rounded-xl">
+                            <option value="">Select Class</option>
+                            <option>Playgroup</option><option>Nursery</option><option>Prep</option>
+                            <option>1st</option><option>2nd</option><option>3rd</option>
+                            <option>4th</option><option>5th</option><option>6th</option>
+                            <option>7th</option><option>8th</option><option>9th</option><option>10th</option>
+                        </select>
+                        <button onclick="searchStudent()" class="btn-primary w-full p-3 rounded-xl font-bold mt-2">Search Records</button>
+                    </div>
+                </div>
+
+                <!-- Admin Summary -->
+                <div class="glass p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 text-indigo-300">Financial Snapshot</h3>
+                    <div class="grid grid-cols-2 gap-4 text-center">
+                        <div class="bg-white/5 p-4 rounded-xl border border-white/5">
+                            <p class="text-xs text-slate-400 uppercase">Students</p>
+                            <p id="totalStudents" class="text-xl font-bold">0</p>
+                        </div>
+                        <div class="bg-white/5 p-4 rounded-xl border border-white/5">
+                            <p class="text-xs text-slate-400 uppercase">Total Fee</p>
+                            <p id="totalFee" class="text-xl font-bold">0</p>
+                        </div>
+                        <div class="bg-white/5 p-4 rounded-xl border border-white/5">
+                            <p class="text-xs text-slate-400 uppercase">Paid</p>
+                            <p id="totalPaid" class="text-xl font-bold text-emerald-400">0</p>
+                        </div>
+                        <div class="bg-white/5 p-4 rounded-xl border border-white/5">
+                            <p class="text-xs text-slate-400 uppercase">Balance</p>
+                            <p id="remainingFee" class="text-xl font-bold text-rose-400">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Info Section -->
+                <div id="studentSection" class="glass p-6 rounded-2xl hidden animate-in slide-in-from-top-4 duration-500">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h2 id="studentName" class="text-3xl font-bold text-white">---</h2>
+                            <p class="text-indigo-400 font-medium">Roll No: <span id="rollNo" class="text-slate-300">---</span></p>
+                        </div>
+                        <div class="flex gap-8 text-right">
+                            <div><p class="text-xs text-slate-400 uppercase">Class</p><p id="className" class="font-bold text-lg">---</p></div>
+                            <div><p class="text-xs text-slate-400 uppercase">Base Fee</p><p id="monthlyFee" class="font-bold text-lg text-indigo-400">---</p></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
+                        <p class="text-sm"><span class="text-slate-400">Father's Name:</span> <span id="fatherName" class="text-slate-200">---</span></p>
+                        <button onclick="generateAllSlips()" class="text-xs text-indigo-300 hover:underline">Download Full Statement</button>
+                    </div>
+                </div>
+
+                <!-- Ledger -->
+                <div id="feeSection" class="glass p-6 rounded-2xl hidden">
+                    <h3 class="text-lg font-semibold mb-4">Payment History</h3>
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="text-slate-400 text-sm border-b border-white/10">
+                                    <th class="pb-3 px-2">Month</th>
+                                    <th class="pb-3 px-2 text-center">Fee</th>
+                                    <th class="pb-3 px-2 text-center">Paid</th>
+                                    <th class="pb-3 px-2 text-center">Due</th>
+                                    <th class="pb-3 px-2 text-center">Status</th>
+                                    <th class="pb-3 px-2 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="feeTable" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Submit Fee -->
+                <div id="submitSection" class="glass p-6 rounded-2xl hidden">
+                    <h3 class="text-lg font-semibold mb-4 text-indigo-300">Collect New Payment</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="text-xs text-slate-400 ml-1">Select Month</label><select id="payMonth" class="w-full p-3 rounded-xl mt-1"></select></div>
+                        <div><label class="text-xs text-slate-400 ml-1">Paid Amount (Rs.)</label><input type="number" id="paidAmount" placeholder="0.00" class="w-full p-3 rounded-xl mt-1"></div>
+                        <div><label class="text-xs text-slate-400 ml-1">Method</label><select id="paymentMethod" class="w-full p-3 rounded-xl mt-1"><option>Cash</option><option>Bank Transfer</option><option>Online / App</option></select></div>
+                        <div><label class="text-xs text-slate-400 ml-1">Notes / Remarks</label><input id="remarks" placeholder="Reference No." class="w-full p-3 rounded-xl mt-1"></div>
+                    </div>
+                    <input id="payRoll" type="hidden">
+                    <button onclick="submitFee()" class="btn-primary w-full p-4 rounded-xl font-bold mt-6">Confirm & Save Transaction</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="msgBox" class="fixed bottom-10 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-full hidden z-50 transition-all duration-300 border-indigo-500/50">
+        <p id="msgText" class="text-sm font-medium"></p>
+    </div>
+
+<script>
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyKBLrWYNIbuN43G_kksZzQm0tCtOQl5GKGdyDGYOmpaMkeUzL7QhMdHjYcZgbK2aRm/exec";
+    let currentStudentData = null;
+
+    let scene, camera, renderer, points;
+    function init3D() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+        renderer = new THREE.WebGLRenderer({ alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        const geo = new THREE.BufferGeometry();
+        const pos = [];
+        for(let i=0; i<3000; i++) { pos.push(Math.random()*1600-800, Math.random()*1600-800, Math.random()*1600-800); }
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({ size: 2, color: 0x4f46e5, transparent: true, opacity: 0.4 });
+        points = new THREE.Points(geo, mat);
+        scene.add(points);
+        camera.position.z = 400;
+    }
+    function animate() { requestAnimationFrame(animate); points.rotation.y += 0.001; renderer.render(scene, camera); }
+
+    function showMsg(text, type = "success") {
+        const box = document.getElementById('msgBox');
+        const txt = document.getElementById('msgText');
+        txt.innerText = text;
+        txt.className = type === 'error' ? 'text-rose-400' : 'text-emerald-400';
+        box.classList.remove('hidden');
+        setTimeout(() => box.classList.add('hidden'), 3000);
+    }
+
+    function populateMonths() {
+        const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const sel = document.getElementById("payMonth");
+        sel.innerHTML = "";
+        months.forEach((m, i) => {
+            const opt = document.createElement("option");
+            opt.value = i + 1; opt.text = m;
+            sel.appendChild(opt);
+        });
+        sel.value = new Date().getMonth() + 1;
+    }
+
+    function searchStudent() {
+        const roll = document.getElementById("searchRoll").value.trim();
+        const name = document.getElementById("searchName").value.trim();
+        const cls = document.getElementById("searchClass").value;
+        showMsg("Searching database...");
+        fetch(`${WEB_APP_URL}?roll=${roll}&name=${name}&class=${cls}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.result === "success" && data.students.length > 0) {
+                currentStudentData = data;
+                const s = data.students[0];
+                ['studentSection', 'feeSection', 'submitSection'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+                document.getElementById("studentName").innerText = s.Name;
+                document.getElementById("rollNo").innerText = s.Roll_No;
+                document.getElementById("fatherName").innerText = s.Father_Name;
+                document.getElementById("className").innerText = s.Class;
+                document.getElementById("monthlyFee").innerText = "Rs. " + s.Monthly_Fee;
+                document.getElementById("payRoll").value = s.Roll_No;
+                const table = document.getElementById("feeTable");
+                table.innerHTML = "";
+                data.fees.forEach(f => {
+                    const sClass = f.Status.toLowerCase() === 'paid' ? 'status-paid' : (f.Status.toLowerCase() === 'partial' ? 'status-partial' : 'status-pending');
+                    table.innerHTML += `
+                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td class="py-4 px-2 font-medium">${f.Month}</td>
+                            <td class="py-4 px-2 text-center">${f.Fee}</td>
+                            <td class="py-4 px-2 text-center text-emerald-400">${f.Paid}</td>
+                            <td class="py-4 px-2 text-center text-rose-400">${f.Remaining}</td>
+                            <td class="py-4 px-2 text-center"><span class="status-badge ${sClass}">${f.Status}</span></td>
+                            <td class="py-4 px-2 text-right">
+                                <button onclick="generateSlip('${f.Month}', '${f.Fee}', '${f.Paid}', '${f.Remaining}', '${f.Status}')" class="btn-outline px-3 py-1 rounded-lg text-xs font-bold text-indigo-300">Slip</button>
+                            </td>
+                        </tr>`;
+                });
+                showMsg("Records loaded");
+            } else { showMsg("Student not found", "error"); }
+        });
+    }
+
+    function generateSlip(month, fee, paid, due, status) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const s = currentStudentData.students[0];
+        doc.setFillColor(79, 70, 229); doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.setFont("helvetica", "bold");
+        doc.text("EDUPAY PRO ACADEMY", 105, 20, { align: "center" });
+        doc.setFontSize(10); doc.setFont("helvetica", "normal");
+        doc.text("Official Student Fee Receipt | Tel: +123 456 789", 105, 30, { align: "center" });
+        doc.setTextColor(0, 0, 0); doc.setFontSize(12);
+        doc.text(`Receipt ID: RC-${Date.now().toString().slice(-6)}`, 15, 55);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 155, 55);
+        doc.setDrawColor(200, 200, 200); doc.line(15, 60, 195, 60);
+        const details = [ ["Student Name:", s.Name, "Roll No:", s.Roll_No], ["Father Name:", s.Father_Name, "Class:", s.Class], ["Month of Fee:", month, "Status:", status.toUpperCase()] ];
+        doc.autoTable({ startY: 65, body: details, theme: 'plain', styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { fontStyle: 'bold', width: 35 }, 2: { fontStyle: 'bold', width: 35 } } });
+        doc.autoTable({ startY: doc.lastAutoTable.finalY + 10, head: [['Description', 'Amount (Rs.)']], body: [['Monthly Tuition Fee', fee], ['Total Paid', paid], ['Current Balance / Due', due]], theme: 'grid', headStyles: { fillStyle: [79, 70, 229] }, styles: { halign: 'center' }, columnStyles: { 0: { halign: 'left' } } });
+        doc.save(`${s.Name}_${month}_Slip.pdf`);
+    }
+
+    // New Function for Full Statement
+    function generateAllSlips() {
+        if (!currentStudentData) return showMsg("No data available", "error");
+        
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const s = currentStudentData.students[0];
+        const fees = currentStudentData.fees;
+
+        // Calculate Totals
+        let totalF = 0, totalP = 0, totalD = 0;
+        const tableBody = fees.map(f => {
+            totalF += parseFloat(f.Fee || 0);
+            totalP += parseFloat(f.Paid || 0);
+            totalD += parseFloat(f.Remaining || 0);
+            return [f.Month, f.Fee, f.Paid, f.Remaining, f.Status];
+        });
+
+        doc.setFillColor(30, 41, 59); doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.setFont("helvetica", "bold");
+        doc.text("STUDENT FEE STATEMENT", 105, 20, { align: "center" });
+        doc.setFontSize(10); doc.text("Full Academic Year Transaction Ledger", 105, 30, { align: "center" });
+
+        doc.setTextColor(0, 0, 0); doc.setFontSize(11);
+        doc.text(`Student: ${s.Name}`, 15, 50);
+        doc.text(`Roll No: ${s.Roll_No}`, 15, 56);
+        doc.text(`Class: ${s.Class}`, 15, 62);
+        doc.text(`Printed: ${new Date().toLocaleString()}`, 145, 50);
+        doc.line(15, 68, 195, 68);
+
+        // Detailed Ledger Table
+        doc.autoTable({
+            startY: 75,
+            head: [['Month', 'Fee Amount', 'Paid', 'Balance', 'Status']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillStyle: [79, 70, 229] },
+            styles: { fontSize: 9 }
+        });
+
+        // Summary Calculations Box
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFillColor(245, 245, 245);
+        doc.rect(130, finalY, 65, 35, 'F');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Total Annual Fee:`, 135, finalY + 10);
+        doc.text(`Rs. ${totalF.toLocaleString()}`, 190, finalY + 10, { align: 'right' });
+        
+        doc.text(`Total Paid:`, 135, finalY + 18);
+        doc.setTextColor(34, 197, 94);
+        doc.text(`Rs. ${totalP.toLocaleString()}`, 190, finalY + 18, { align: 'right' });
+        
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Grand Total Dues:`, 135, finalY + 28);
+        doc.setTextColor(239, 68, 68);
+        doc.text(`Rs. ${totalD.toLocaleString()}`, 190, finalY + 28, { align: 'right' });
+
+        doc.save(`${s.Name}_Full_Statement.pdf`);
+        showMsg("Statement Downloaded");
+    }
+
+    function submitFee() {
+        const roll = document.getElementById("payRoll").value;
+        const month = document.getElementById("payMonth").value;
+        const monthName = document.getElementById("payMonth").selectedOptions[0].text;
+        const paid = parseFloat(document.getElementById("paidAmount").value);
+        const totalFee = parseFloat(document.getElementById("monthlyFee").innerText.replace("Rs. ", ""));
+        if(isNaN(paid) || paid < 0) return showMsg("Invalid amount", "error");
+        let status = paid >= totalFee ? "Paid" : (paid > 0 ? "Partial" : "Pending");
+        const data = { roll, month, monthName, year: new Date().getFullYear(), totalFee, paid, status, method: document.getElementById("paymentMethod").value, remarks: document.getElementById("remarks").value };
+        showMsg("Saving...");
+        fetch(WEB_APP_URL, { method: "POST", mode: 'no-cors', body: JSON.stringify(data) }).then(() => { showMsg("Saved"); document.getElementById("paidAmount").value = ""; setTimeout(searchStudent, 1500); loadDashboard(); });
+    }
+
+    function loadDashboard() {
+        fetch(WEB_APP_URL + "?summary=1").then(res => res.json()).then(data => {
+            document.getElementById("totalStudents").innerText = data.totalStudents || 0;
+            document.getElementById("totalFee").innerText = (data.totalFee || 0).toLocaleString();
+            document.getElementById("totalPaid").innerText = (data.totalPaid || 0).toLocaleString();
+            document.getElementById("remainingFee").innerText = (data.remainingFee || 0).toLocaleString();
+        });
+    }
+
+    window.onload = () => { init3D(); animate(); populateMonths(); loadDashboard(); setInterval(() => { document.getElementById('currentTime').innerText = new Date().toLocaleString(); }, 1000); }
+</script>
+</body>
+</html>
